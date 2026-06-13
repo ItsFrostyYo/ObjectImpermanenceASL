@@ -48,23 +48,37 @@ This keeps normal route transitions and manual map routing separated.
 
 ## Settings
 
-### Reset
+The LiveSplit settings are grouped exactly like this:
+
+### Reset Types
 
 - `Reset on Loading "Landing" from Map`
+- `Reset on Death Transitions in "Landing"`
 
-When enabled, returning to `Landing` through the map triggers a reset. Walking into `Landing` at the end of the run is still treated as a normal scene transition.
+`Reset on Loading "Landing" from Map` resets when you travel to `Landing` using the map.
 
-### Transition Splits
+`Reset on Death Transitions in "Landing"` is for `Landing -> Landing` reload behavior, such as dying and being reloaded back into `Landing`.
+
+Normal walking transitions are still handled by the split logic, not by map reset logic.
+
+### Scene Transition Splits
 
 - `Landing -> Entrance` (`Split`)
+- `Fan -> Cloudbed` (`Split`)
+- `Statue -> Rounded Room` (`Split`)
+- `Chasm -> Landing` (`End Split`)
+
+These only split on normal non-map transitions.
+
+### Checkpoint Splits
+
 - `Checkpoint Alley` (`Split`)
 - `Checkpoint Fan` (`Split`)
-- `Fan -> Cloudbed` (`Split`)
 - `Checkpoint Houses` (`Split`)
 - `Checkpoint Statue` (`Split`)
-- `Statue -> Rounded Room` (`Split`)
 - `Checkpoint Chasm` (`Split`)
-- `Chasm -> Landing` (`End Split`)
+
+These split when that checkpoint is unlocked during the run.
 
 Only enabled settings split.
 

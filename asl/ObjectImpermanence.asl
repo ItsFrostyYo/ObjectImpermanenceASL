@@ -68,26 +68,23 @@ startup
 
     dynamic[,] _settings =
     {
-        { "reset_on_new_start", true, "Reset on Loading `Landing` from Map", null },
+        { "GroupResets", true, "Reset Types", null },
+        { "reset_on_new_start", true, "Loading `Landing` from Map (Reset)", "GroupResets" },
+        { "reset_on_landing_reload", true, "Death Transitions in `Landing` (Reset)", "GroupResets" },
 
-        { "GroupTransitions", true, "Transition Splits", null },
+        { "GroupTransitions", true, "Scene Transition Splits", null },
+        { "LandingSplit", true, "Landing `Landing -> Entrance` (Split)", "GroupTransitions" },
+        { "IntroSplit", true, "Intro `Fan -> Cloudbed` (Split)", "GroupTransitions" },
+        { "ExteriorSplit", true, "Exterior `Statue -> Rounded Room` (Split)", "GroupTransitions" },
+        { "SpatialSplit", true, "Spacial `Chasm -> Landing` (End Split)", "GroupTransitions" },
 
-        { "GroupLanding", true, "Landing", "GroupTransitions" },
-        { "LandingSplit", false, "`Landing -> Entrance` (Split)", "GroupLanding" },
-        { "AlleyCheckpointSplit", false, "Checkpoint `Alley` (Split)", "GroupLanding" },
-        { "FanCheckpointSplit", false, "Checkpoint `Fan` (Split)", "GroupLanding" },
+        { "GroupCheckpoints", true, "Checkpoint Splits", null },
+        { "AlleyCheckpointSplit", false, "Checkpoint `Alley` (Split)", "GroupCheckpoints" },
+        { "FanCheckpointSplit", false, "Checkpoint `Fan` (Split)", "GroupCheckpoints" },
+        { "HousesCheckpointSplit", false, "Checkpoint `Houses` (Split)", "GroupCheckpoints" },
+        { "StatueCheckpointSplit", false, "Checkpoint `Statue` (Split)", "GroupCheckpoints" },
+        { "ChasmCheckpointSplit", false, "Checkpoint `Chasm` (Split)", "GroupCheckpoints" },
 
-        { "GroupIntro", true, "Cloudbed", "GroupTransitions" },
-        { "IntroSplit", false, "`Fan -> Cloudbed` (Split)", "GroupIntro" },
-        { "HousesCheckpointSplit", false, "Checkpoint `Houses` (Split)", "GroupIntro" },
-        { "StatueCheckpointSplit", false, "Checkpoint `Statue` (Split)", "GroupIntro" },
-
-        { "GroupExterior", true, "Rounded Room", "GroupTransitions" },
-        { "ExteriorSplit", false, "`Statue -> Rounded Room` (Split)", "GroupExterior" },
-        { "ChasmCheckpointSplit", false, "Checkpoint `Chasm` (Split)", "GroupExterior" },
-
-        { "GroupSpatial", true, "Ending", "GroupTransitions" },
-        { "SpatialSplit", true, "`Chasm -> Landing` (End Split)", "GroupSpatial" },
     };
     vars.Uhara.Settings.Create(_settings);
 }
@@ -99,7 +96,8 @@ init
     vars.Game.SetDefaultNames("Assembly-CSharp");
 
     vars.Game.Watch<bool>("IsLoadingCheckpoint", "Assembly-CSharp::CheckPointSystem", "<IsLoadingCheckpoint>k__BackingField");
-    vars.Game.Watch<bool>("IsMapInteractionInProgress", (short)16, "Assembly-CSharp::MapLocation", "interaction_in_progress");
+    vars.Game.Watch<int>("CoreMenuState", "Assembly-CSharp::CoreMenu", "state");
+    vars.Game.Watch<int>("CoreMenuSection", "Assembly-CSharp::CoreMenu", "section");
     vars.Game.Watch<ulong>("ActiveCheckpointPtr", "Assembly-CSharp::CheckPointSystem", "<ActiveCheckpoint>k__BackingField");
 
     var activeCheckpointSaveKey = vars.Game.Get("Assembly-CSharp::CheckPointSystem", "<ActiveCheckpoint>k__BackingField", "saveKey");
@@ -121,23 +119,17 @@ update
 
     string oldScene = vars.TryGet(old, "scene") as string ?? "";
     bool oldHasTransitionLoad = (vars.TryGet(old, "hasTransitionLoad") as bool?) ?? false;
-    bool oldMapInteractionInProgress = (vars.TryGet(old, "mapInteractionInProgress") as bool?) ?? false;
-
     current.scene = vars.Utils.GetCurrentSceneName() ?? "";
     if (string.IsNullOrEmpty(current.scene))
         current.scene = vars.Utils.GetCurrentSceneName2() ?? "";
 
     current.loadingScene = vars.Utils.GetLoadingSceneName() ?? "";
     current.isLoadingCheckpoint = (vars.TryGet(current, "IsLoadingCheckpoint") as bool?) ?? false;
-    current.mapInteractionInProgress = false;
-    for (int i = 0; i < 16; i++)
-    {
-        if ((vars.TryGet(current, "IsMapInteractionInProgress" + i.ToString()) as bool?) ?? false)
-        {
-            current.mapInteractionInProgress = true;
-            break;
-        }
-    }
+    current.coreMenuState = (vars.TryGet(current, "CoreMenuState") as int?) ?? 0;
+    current.coreMenuSection = (vars.TryGet(current, "CoreMenuSection") as int?) ?? 0;
+    current.mapMenuOpen =
+        current.coreMenuSection == 2 &&
+        current.coreMenuState != 0;
     current.activeCheckpointPtr = vars.ToULong(vars.TryGet(current, "ActiveCheckpointPtr"));
     current.activeCheckpointSaveKey = vars.TryGet(current, "ActiveCheckpointSaveKey") as string ?? "";
 
@@ -151,15 +143,16 @@ update
 
     vars.LoadRemovalActive = current.hasTransitionLoad;
 
-    if (current.mapInteractionInProgress)
+    if (current.mapMenuOpen)
         vars.LastMapTriggerTime = DateTime.Now;
 
     if (!oldHasTransitionLoad && current.hasTransitionLoad)
     {
+        bool oldMapMenuOpen = (vars.TryGet(old, "mapMenuOpen") as bool?) ?? false;
         vars.TransitionFromScene = !string.IsNullOrEmpty(oldScene) ? oldScene : current.scene;
         vars.TransitionStartedFromMap =
-            current.mapInteractionInProgress ||
-            oldMapInteractionInProgress ||
+            current.mapMenuOpen ||
+            oldMapMenuOpen ||
             (DateTime.Now - vars.LastMapTriggerTime).TotalSeconds <= 3.0;
     }
 }
@@ -275,11 +268,23 @@ reset
 
     if (currentScene == vars.StartScene
         && transitionFinished
-        && vars.TransitionStartedFromMap)
+        && vars.TransitionStartedFromMap
+        && settings["reset_on_new_start"])
     {
         vars.AutoStartAfterReset = true;
         vars.TransitionFromScene = currentScene;
         vars.TransitionStartedFromMap = false;
+        return true;
+    }
+
+    if (currentScene == vars.StartScene
+        && transitionFinished
+        && vars.TransitionFromScene == vars.StartScene
+        && !vars.TransitionStartedFromMap
+        && settings["reset_on_landing_reload"])
+    {
+        vars.AutoStartAfterReset = true;
+        vars.TransitionFromScene = currentScene;
         return true;
     }
 }
