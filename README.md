@@ -8,6 +8,7 @@ This repo contains the Uhara-based LiveSplit autosplitter for the `Object Imperm
 ## What It Does
 
 - **Start**: starts when you load into `Landing`
+- **Optional IL start**: can start from any of the 9 run locations when loaded from the map
 - **Load removal**: pauses during scene transitions and checkpoint loading
 - **Scene splits**: splits on normal walking transitions only
 - **Checkpoint splits**: optional splits for the map-visible checkpoint locations that are not already covered by scene transitions
@@ -42,7 +43,7 @@ Map travel is handled separately from normal walking transitions:
 
 - Map travel to non-`Landing` locations does **not** split
 - Map travel still uses **load removal**
-- Map travel to `Landing` can **reset** if `Reset on Loading "Landing" from Map` is enabled
+- Map travel can **reset** on specific destinations if that destination is enabled in `Individual Level Settings`
 
 This keeps normal route transitions and manual map routing separated.
 
@@ -52,21 +53,21 @@ The LiveSplit settings are grouped exactly like this:
 
 ### Reset Types
 
-- `Reset on Loading "Landing" from Map`
-- `Reset on Death Transitions in "Landing"`
+- `Loading "Landing" from Map (Reset)`
+- `Death Transitions in "Landing" (Reset)`
 
-`Reset on Loading "Landing" from Map` resets when you travel to `Landing` using the map.
+`Loading "Landing" from Map (Reset)` is the original Landing map reset behavior.
 
-`Reset on Death Transitions in "Landing"` is for `Landing -> Landing` reload behavior, such as dying and being reloaded back into `Landing`.
+`Death Transitions in "Landing" (Reset)` is for `Landing -> Landing` reload behavior, such as dying and being reloaded back into `Landing`.
 
-Normal walking transitions are still handled by the split logic, not by map reset logic.
+This is separate from map-based IL resets.
 
 ### Scene Transition Splits
 
-- `Landing -> Entrance` (`Split`)
-- `Fan -> Cloudbed` (`Split`)
-- `Statue -> Rounded Room` (`Split`)
-- `Chasm -> Landing` (`End Split`)
+- `Landing "Landing -> Entrance" (Split)`
+- `Intro "Fan -> Cloudbed" (Split)`
+- `Exterior "Statue -> Rounded Room" (Split)`
+- `Spacial "Chasm -> Landing" (End Split)`
 
 These only split on normal non-map transitions.
 
@@ -80,7 +81,26 @@ These only split on normal non-map transitions.
 
 These split when that checkpoint is unlocked during the run.
 
-Only enabled settings split.
+### Individual Level Settings
+
+- `Entrance` `(Start + Reset)`
+- `Alley` `(Start + Reset)`
+- `Fan` `(Start + Reset)`
+- `Cloudbed` `(Start + Reset)`
+- `Houses` `(Start + Reset)`
+- `Statue` `(Start + Reset)`
+- `Rounded Room` `(Start + Reset)`
+- `Chasm` `(Start + Reset)`
+
+Each of these enables the full IL flow for that specific destination:
+
+- start when that location is loaded from the map
+- reset when that location is loaded from the map during a run
+- immediately flow into a fresh start for that IL after the reset
+
+`Landing` stays on the original reset/start behavior in `Reset Types` and the normal main start logic.
+
+Only enabled settings are active.
 
 ## In-Game Time
 
