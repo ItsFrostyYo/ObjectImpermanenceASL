@@ -2,8 +2,6 @@
 // Engine: Unity IL2CPP via Uhara Unity scene utilities
 
 state("Object Impermanence"){}
-state("ObjectImpermanence"){}
-state("Object Impermanence Demo"){}
 
 startup
 {
@@ -34,12 +32,12 @@ startup
 
     dynamic[,] _settings =
     {
-        { "reset_on_new_start", false, "Reset on New Run Start", null },
+        { "reset_on_new_start", false, "Reset on Loading `Landing` from Map", null },
         { "group_transition_splits", true, "Transition Splits", null },
-        { "split_landing", true, "Split on Landing Transition", "group_transition_splits" },
-        { "split_intro", true, "Split on Intro Transition", "group_transition_splits" },
-        { "split_exterior", true, "Split on Exterior Transition", "group_transition_splits" },
-        { "split_spatial", true, "Split on Spatial Transition", "group_transition_splits" }
+        { "split_landing", true, "Split on `Landing -> Intro` (Split)", "group_transition_splits" },
+        { "split_intro", true, "Split on `Intro -> Exterior` (Split)", "group_transition_splits" },
+        { "split_exterior", true, "Split on `Exterior -> Spatial` (Split)", "group_transition_splits" },
+        { "split_spatial", true, "Split on `Spatial -> Landing` (End)", "group_transition_splits" }
     };
     vars.Uhara.Settings.Create(_settings);
 }
