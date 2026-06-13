@@ -32,11 +32,11 @@ startup
 
     dynamic[,] _settings =
     {
-        { "reset_on_new_start", false, "Reset on Loading `Landing` from Map", null },
+        { "reset_on_new_start", true, "Reset on Loading `Landing` from Map", null },
         { "group_transition_splits", true, "Transition Splits", null },
-        { "split_landing", true, "`Landing -> Intro` (Split)", "group_transition_splits" },
-        { "split_intro", true, "`Intro -> Exterior` (Split)", "group_transition_splits" },
-        { "split_exterior", true, "`Exterior -> Spatial` (Split)", "group_transition_splits" },
+        { "split_landing", false, "`Landing -> Intro` (Split)", "group_transition_splits" },
+        { "split_intro", false, "`Intro -> Exterior` (Split)", "group_transition_splits" },
+        { "split_exterior", false, "`Exterior -> Spatial` (Split)", "group_transition_splits" },
         { "split_spatial", true, "`Spatial -> Landing` (End)", "group_transition_splits" }
     };
     vars.Uhara.Settings.Create(_settings);
