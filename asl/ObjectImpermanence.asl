@@ -73,21 +73,21 @@ startup
         { "GroupTransitions", true, "Transition Splits", null },
 
         { "GroupLanding", true, "Landing", "GroupTransitions" },
-        { "LandingSplit", false, "`Landing -> Intro` (Split)", "GroupLanding" },
+        { "LandingSplit", false, "`Landing -> Entrance` (Split)", "GroupLanding" },
         { "AlleyCheckpointSplit", false, "Checkpoint `Alley` (Split)", "GroupLanding" },
         { "FanCheckpointSplit", false, "Checkpoint `Fan` (Split)", "GroupLanding" },
 
-        { "GroupIntro", true, "Intro", "GroupTransitions" },
-        { "IntroSplit", false, "`Intro -> Exterior` (Split)", "GroupIntro" },
+        { "GroupIntro", true, "Cloudbed", "GroupTransitions" },
+        { "IntroSplit", false, "`Fan -> Cloudbed` (Split)", "GroupIntro" },
         { "HousesCheckpointSplit", false, "Checkpoint `Houses` (Split)", "GroupIntro" },
+        { "StatueCheckpointSplit", false, "Checkpoint `Statue` (Split)", "GroupIntro" },
 
-        { "GroupExterior", true, "Exterior", "GroupTransitions" },
-        { "ExteriorSplit", false, "`Exterior -> Spatial` (Split)", "GroupExterior" },
-        { "StatueCheckpointSplit", false, "Checkpoint `Statue` (Split)", "GroupExterior" },
+        { "GroupExterior", true, "Rounded Room", "GroupTransitions" },
+        { "ExteriorSplit", false, "`Statue -> Rounded Room` (Split)", "GroupExterior" },
+        { "ChasmCheckpointSplit", false, "Checkpoint `Chasm` (Split)", "GroupExterior" },
 
-        { "GroupSpatial", true, "Spatial", "GroupTransitions" },
-        { "SpatialSplit", true, "`Spatial -> Landing` (End)", "GroupSpatial" },
-        { "ChasmCheckpointSplit", false, "Checkpoint `Chasm` (Split)", "GroupSpatial" },
+        { "GroupSpatial", true, "Ending", "GroupTransitions" },
+        { "SpatialSplit", true, "`Chasm -> Landing` (End Split)", "GroupSpatial" },
     };
     vars.Uhara.Settings.Create(_settings);
 }
