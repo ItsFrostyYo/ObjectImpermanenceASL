@@ -1,5 +1,6 @@
 // Object Impermanence Demo autosplitter
 // Engine: Unity IL2CPP via Uhara Unity scene utilities
+// Savestates Example HK "C:\Program Files (x86)\Steam\steamapps\common\Hollow Knight Silksong\BepInEx\plugins"
 
 state("Object Impermanence"){}
 
@@ -55,6 +56,10 @@ startup
     vars.PendingStartLocation = "";
     vars.AutoStartAfterReset = false;
     vars.AutoStartLocation = "";
+    vars.ModResetPending = false;
+    vars.ModResetSequenceInitialized = false;
+    vars.LastSeenModResetSequence = 0;
+    vars.ModResetTargetLocation = "";
     vars.TransitionFromScene = "";
     vars.TransitionStartedFromMap = false;
     vars.LastMapTriggerTime = DateTime.MinValue;
@@ -126,6 +131,28 @@ startup
             return "il_chasm";
         return "";
     });
+    vars.GetRunLocationFromCode = (Func<int, string>)(code =>
+    {
+        if (code == 1)
+            return "landing";
+        if (code == 2)
+            return "entrance";
+        if (code == 3)
+            return "alley";
+        if (code == 4)
+            return "fan";
+        if (code == 5)
+            return "cloudbed";
+        if (code == 6)
+            return "houses";
+        if (code == 7)
+            return "statue";
+        if (code == 8)
+            return "rounded_room";
+        if (code == 9)
+            return "chasm";
+        return "";
+    });
 
     dynamic[,] _settings =
     {
@@ -170,16 +197,27 @@ init
     vars.Game.Watch<int>("CoreMenuState", "Assembly-CSharp::CoreMenu", "state");
     vars.Game.Watch<int>("CoreMenuSection", "Assembly-CSharp::CoreMenu", "section");
     vars.Game.Watch<ulong>("ActiveCheckpointPtr", "Assembly-CSharp::CheckPointSystem", "<ActiveCheckpoint>k__BackingField");
+    vars.Game.Watch<ulong>("ActiveMainCheckpointPtr", "Assembly-CSharp::CheckPointSystem", "<ActiveMainCheckpoint>k__BackingField");
+    vars.Game.Watch<int>("ModResetSequence", "ObjImpPracticeMod:ObjImpPracticeMod:PracticeStateComponent", "ModResetSequence");
+    vars.Game.Watch<int>("ModResetTargetCode", "ObjImpPracticeMod:ObjImpPracticeMod:PracticeStateComponent", "ModResetTargetCode");
 
     var activeCheckpointSaveKey = vars.Game.Get("Assembly-CSharp::CheckPointSystem", "<ActiveCheckpoint>k__BackingField", "saveKey");
     if (activeCheckpointSaveKey != null)
         vars.Resolver.WatchUnityString("ActiveCheckpointSaveKey", activeCheckpointSaveKey.Base, activeCheckpointSaveKey.Offsets);
+
+    var activeMainCheckpointSaveKey = vars.Game.Get("Assembly-CSharp::CheckPointSystem", "<ActiveMainCheckpoint>k__BackingField", "saveKey");
+    if (activeMainCheckpointSaveKey != null)
+        vars.Resolver.WatchUnityString("ActiveMainCheckpointSaveKey", activeMainCheckpointSaveKey.Base, activeMainCheckpointSaveKey.Offsets);
 
     vars.LoadRemovalActive = false;
     vars.PendingAutoStart = false;
     vars.PendingStartLocation = "";
     vars.AutoStartAfterReset = false;
     vars.AutoStartLocation = "";
+    vars.ModResetPending = false;
+    vars.ModResetSequenceInitialized = false;
+    vars.LastSeenModResetSequence = 0;
+    vars.ModResetTargetLocation = "";
     vars.TransitionFromScene = "";
     vars.TransitionStartedFromMap = false;
     vars.LastMapTriggerTime = DateTime.MinValue;
@@ -204,8 +242,16 @@ update
         current.coreMenuSection == 2 &&
         current.coreMenuState != 0;
     current.activeCheckpointPtr = vars.ToULong(vars.TryGet(current, "ActiveCheckpointPtr"));
+    current.activeMainCheckpointPtr = vars.ToULong(vars.TryGet(current, "ActiveMainCheckpointPtr"));
     current.activeCheckpointSaveKey = vars.TryGet(current, "ActiveCheckpointSaveKey") as string ?? "";
-    current.runLocation = vars.GetRunLocation(current.scene, current.activeCheckpointSaveKey);
+    current.activeMainCheckpointSaveKey = vars.TryGet(current, "ActiveMainCheckpointSaveKey") as string ?? "";
+    current.modResetSequence = (vars.TryGet(current, "ModResetSequence") as int?) ?? 0;
+    current.modResetTargetCode = (vars.TryGet(current, "ModResetTargetCode") as int?) ?? 0;
+    current.runLocation = vars.GetRunLocation(
+        current.scene,
+        !string.IsNullOrEmpty(current.activeMainCheckpointSaveKey)
+            ? current.activeMainCheckpointSaveKey
+            : current.activeCheckpointSaveKey);
 
     current.hasSceneLoad =
         !string.IsNullOrEmpty(current.loadingScene) &&
@@ -219,6 +265,23 @@ update
 
     if (current.mapMenuOpen)
         vars.LastMapTriggerTime = DateTime.Now;
+
+    if (!(vars.ModResetSequenceInitialized as bool? ?? false))
+    {
+        vars.LastSeenModResetSequence = current.modResetSequence;
+        vars.ModResetSequenceInitialized = true;
+    }
+    else if (current.modResetSequence != (vars.LastSeenModResetSequence as int? ?? 0))
+    {
+        vars.LastSeenModResetSequence = current.modResetSequence;
+        if (current.modResetSequence != 0)
+        {
+            vars.ModResetPending = true;
+            vars.ModResetTargetLocation = vars.GetRunLocationFromCode(current.modResetTargetCode);
+            if (string.IsNullOrEmpty(vars.ModResetTargetLocation as string ?? ""))
+                vars.ModResetTargetLocation = current.runLocation as string ?? "";
+        }
+    }
 
     if (!oldHasTransitionLoad && current.hasTransitionLoad)
     {
@@ -256,6 +319,8 @@ start
     {
         vars.PendingAutoStart = false;
         vars.PendingStartLocation = "";
+        vars.TransitionFromScene = currentScene;
+        vars.TransitionStartedFromMap = false;
         return true;
     }
 }
@@ -349,11 +414,41 @@ split
 reset
 {
     string currentScene = vars.TryGet(current, "scene") as string ?? "";
-    string currentRunLocation = vars.TryGet(current, "runLocation") as string ?? "";
     bool transitionFinished = (vars.TryGet(current, "transitionFinished") as bool?) ?? false;
 
     if (timer.CurrentPhase != TimerPhase.Running)
         return false;
+
+    if (vars.ModResetPending)
+    {
+        vars.ModResetPending = false;
+        string modResetTargetLocation = vars.ModResetTargetLocation as string ?? "";
+
+        if (modResetTargetLocation == "landing" && settings["reset_on_new_start"])
+        {
+            vars.AutoStartAfterReset = true;
+            vars.AutoStartLocation = modResetTargetLocation;
+            vars.TransitionFromScene = currentScene;
+            vars.TransitionStartedFromMap = false;
+            vars.ModResetTargetLocation = "";
+            return true;
+        }
+
+        string modResetIlSettingKey = vars.GetILSettingKey(modResetTargetLocation);
+        if (!string.IsNullOrEmpty(modResetIlSettingKey) && settings[modResetIlSettingKey])
+        {
+            vars.AutoStartAfterReset = true;
+            vars.AutoStartLocation = modResetTargetLocation;
+            vars.TransitionFromScene = currentScene;
+            vars.TransitionStartedFromMap = false;
+            vars.ModResetTargetLocation = "";
+            return true;
+        }
+
+        vars.ModResetTargetLocation = "";
+    }
+
+    string currentRunLocation = vars.TryGet(current, "runLocation") as string ?? "";
 
     if (transitionFinished && vars.TransitionStartedFromMap)
     {
@@ -393,6 +488,8 @@ reset
 onReset
 {
     vars.LoadRemovalActive = false;
+    vars.ModResetPending = false;
+    vars.ModResetTargetLocation = "";
     vars.TransitionFromScene = "";
     vars.TransitionStartedFromMap = false;
     vars.LastMapTriggerTime = DateTime.MinValue;
