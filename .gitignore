@@ -1,5 +1,7 @@
 Examples/
 Uhara Stuff (UE)/
 /asl/ObjectImpermanenceTest.asl
-mod/
 decompile/
+/Practice Mod/bin/
+/Practice Mod/obj/
+/Practice Mod/Release/ObjImpPracticeMod-BepInEx-Package
