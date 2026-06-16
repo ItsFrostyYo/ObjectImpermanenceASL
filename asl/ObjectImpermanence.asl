@@ -52,17 +52,39 @@ startup
     vars.SplitSceneC = "2A_Spatial";
 
     vars.LoadRemovalActive = false;
+    vars.HoldLoadRemovalFrame = false;
+    vars.ReleaseLoadRemovalNextUpdate = false;
     vars.PendingAutoStart = false;
     vars.PendingStartLocation = "";
     vars.AutoStartAfterReset = false;
     vars.AutoStartLocation = "";
-    vars.ModResetPending = false;
-    vars.ModResetSequenceInitialized = false;
-    vars.LastSeenModResetSequence = 0;
-    vars.ModResetTargetLocation = "";
+    vars.SignalResetPending = false;
+    vars.SignalResetFlowActive = false;
+    vars.SignalResetTargetLocation = "";
+    vars.SignalFilePath = "";
+    vars.SignalFileExists = false;
     vars.TransitionFromScene = "";
     vars.TransitionStartedFromMap = false;
     vars.LastMapTriggerTime = DateTime.MinValue;
+    vars.ResolveSignalFilePath = (Func<string>)(() =>
+    {
+        try
+        {
+            foreach (var process in Process.GetProcessesByName("Object Impermanence"))
+            {
+                try
+                {
+                    string exePath = process.MainModule.FileName;
+                    if (!string.IsNullOrEmpty(exePath))
+                        return Path.Combine(Path.GetDirectoryName(exePath), "CheckpointResetSignal");
+                }
+                catch { }
+            }
+        }
+        catch { }
+
+        return "";
+    });
     vars.CheckpointHashes = new System.Collections.Generic.Dictionary<string, string>
     {
         { "alley", "fe07462b5f0c7db449d28570cc0f0590" },
@@ -198,8 +220,6 @@ init
     vars.Game.Watch<int>("CoreMenuSection", "Assembly-CSharp::CoreMenu", "section");
     vars.Game.Watch<ulong>("ActiveCheckpointPtr", "Assembly-CSharp::CheckPointSystem", "<ActiveCheckpoint>k__BackingField");
     vars.Game.Watch<ulong>("ActiveMainCheckpointPtr", "Assembly-CSharp::CheckPointSystem", "<ActiveMainCheckpoint>k__BackingField");
-    vars.Game.Watch<int>("ModResetSequence", "ObjImpPracticeMod:ObjImpPracticeMod:PracticeStateComponent", "ModResetSequence");
-    vars.Game.Watch<int>("ModResetTargetCode", "ObjImpPracticeMod:ObjImpPracticeMod:PracticeStateComponent", "ModResetTargetCode");
 
     var activeCheckpointSaveKey = vars.Game.Get("Assembly-CSharp::CheckPointSystem", "<ActiveCheckpoint>k__BackingField", "saveKey");
     if (activeCheckpointSaveKey != null)
@@ -210,14 +230,17 @@ init
         vars.Resolver.WatchUnityString("ActiveMainCheckpointSaveKey", activeMainCheckpointSaveKey.Base, activeMainCheckpointSaveKey.Offsets);
 
     vars.LoadRemovalActive = false;
+    vars.HoldLoadRemovalFrame = false;
+    vars.ReleaseLoadRemovalNextUpdate = false;
     vars.PendingAutoStart = false;
     vars.PendingStartLocation = "";
     vars.AutoStartAfterReset = false;
     vars.AutoStartLocation = "";
-    vars.ModResetPending = false;
-    vars.ModResetSequenceInitialized = false;
-    vars.LastSeenModResetSequence = 0;
-    vars.ModResetTargetLocation = "";
+    vars.SignalResetPending = false;
+    vars.SignalResetFlowActive = false;
+    vars.SignalResetTargetLocation = "";
+    vars.SignalFilePath = vars.ResolveSignalFilePath();
+    vars.SignalFileExists = !string.IsNullOrEmpty(vars.SignalFilePath as string ?? "") && File.Exists(vars.SignalFilePath as string);
     vars.TransitionFromScene = "";
     vars.TransitionStartedFromMap = false;
     vars.LastMapTriggerTime = DateTime.MinValue;
@@ -227,6 +250,12 @@ init
 update
 {
     vars.Uhara.Update();
+
+    if (vars.ReleaseLoadRemovalNextUpdate as bool? ?? false)
+    {
+        vars.ReleaseLoadRemovalNextUpdate = false;
+        vars.HoldLoadRemovalFrame = false;
+    }
 
     string oldScene = vars.TryGet(old, "scene") as string ?? "";
     bool oldHasTransitionLoad = (vars.TryGet(old, "hasTransitionLoad") as bool?) ?? false;
@@ -245,8 +274,6 @@ update
     current.activeMainCheckpointPtr = vars.ToULong(vars.TryGet(current, "ActiveMainCheckpointPtr"));
     current.activeCheckpointSaveKey = vars.TryGet(current, "ActiveCheckpointSaveKey") as string ?? "";
     current.activeMainCheckpointSaveKey = vars.TryGet(current, "ActiveMainCheckpointSaveKey") as string ?? "";
-    current.modResetSequence = (vars.TryGet(current, "ModResetSequence") as int?) ?? 0;
-    current.modResetTargetCode = (vars.TryGet(current, "ModResetTargetCode") as int?) ?? 0;
     current.runLocation = vars.GetRunLocation(
         current.scene,
         !string.IsNullOrEmpty(current.activeMainCheckpointSaveKey)
@@ -261,37 +288,92 @@ update
         oldHasTransitionLoad &&
         !current.hasTransitionLoad;
 
-    vars.LoadRemovalActive = current.hasTransitionLoad;
-
     if (current.mapMenuOpen)
         vars.LastMapTriggerTime = DateTime.Now;
 
-    if (!(vars.ModResetSequenceInitialized as bool? ?? false))
+    if (string.IsNullOrEmpty(vars.SignalFilePath as string ?? ""))
+        vars.SignalFilePath = vars.ResolveSignalFilePath();
+
+    current.signalFileExists =
+        !string.IsNullOrEmpty(vars.SignalFilePath as string ?? "") &&
+        File.Exists(vars.SignalFilePath as string);
+
+    if (!(vars.SignalFileExists as bool? ?? false) && current.signalFileExists)
     {
-        vars.LastSeenModResetSequence = current.modResetSequence;
-        vars.ModResetSequenceInitialized = true;
-    }
-    else if (current.modResetSequence != (vars.LastSeenModResetSequence as int? ?? 0))
-    {
-        vars.LastSeenModResetSequence = current.modResetSequence;
-        if (current.modResetSequence != 0)
+        vars.SignalResetPending = true;
+        vars.SignalResetFlowActive = true;
+        try
         {
-            vars.ModResetPending = true;
-            vars.ModResetTargetLocation = vars.GetRunLocationFromCode(current.modResetTargetCode);
-            if (string.IsNullOrEmpty(vars.ModResetTargetLocation as string ?? ""))
-                vars.ModResetTargetLocation = current.runLocation as string ?? "";
+            string targetLocation = File.ReadAllText(vars.SignalFilePath as string).Trim().ToLowerInvariant();
+            vars.SignalResetTargetLocation = targetLocation;
         }
+        catch
+        {
+            vars.SignalResetTargetLocation = current.runLocation as string ?? "";
+        }
+
+        if (string.IsNullOrEmpty(vars.SignalResetTargetLocation as string ?? ""))
+            vars.SignalResetTargetLocation = current.runLocation as string ?? "";
     }
+    vars.SignalFileExists = current.signalFileExists;
 
     if (!oldHasTransitionLoad && current.hasTransitionLoad)
     {
         bool oldMapMenuOpen = (vars.TryGet(old, "mapMenuOpen") as bool?) ?? false;
         vars.TransitionFromScene = !string.IsNullOrEmpty(oldScene) ? oldScene : current.scene;
         vars.TransitionStartedFromMap =
+            (vars.SignalResetFlowActive as bool? ?? false) ||
             current.mapMenuOpen ||
             oldMapMenuOpen ||
             (DateTime.Now - vars.LastMapTriggerTime).TotalSeconds <= 3.0;
     }
+
+    bool sceneChanged =
+        !string.IsNullOrEmpty(vars.TransitionFromScene as string ?? "") &&
+        !string.IsNullOrEmpty(current.scene) &&
+        current.scene != (vars.TransitionFromScene as string ?? "");
+
+    string currentRunLocation = current.runLocation as string ?? "";
+    string ilSettingKey = vars.GetILSettingKey(currentRunLocation);
+
+    bool shouldSplitThisFrame =
+        timer.CurrentPhase == TimerPhase.Running &&
+        current.transitionFinished &&
+        sceneChanged &&
+        !(vars.TransitionStartedFromMap as bool? ?? false) &&
+        (
+            (current.scene == vars.SplitSceneA && settings["LandingSplit"]) ||
+            (current.scene == vars.SplitSceneB && settings["IntroSplit"]) ||
+            (current.scene == vars.SplitSceneC && settings["ExteriorSplit"]) ||
+            (current.scene == vars.StartScene && settings["SpatialSplit"])
+        );
+
+    bool shouldMapResetThisFrame =
+        timer.CurrentPhase == TimerPhase.Running &&
+        current.transitionFinished &&
+        (vars.TransitionStartedFromMap as bool? ?? false) &&
+        (
+            (currentRunLocation == "landing" && settings["reset_on_new_start"]) ||
+            (!string.IsNullOrEmpty(ilSettingKey) && settings[ilSettingKey])
+        );
+
+    bool shouldLandingReloadResetThisFrame =
+        timer.CurrentPhase == TimerPhase.Running &&
+        current.scene == vars.StartScene &&
+        current.transitionFinished &&
+        (vars.TransitionFromScene as string ?? "") == vars.StartScene &&
+        !(vars.TransitionStartedFromMap as bool? ?? false) &&
+        settings["reset_on_landing_reload"];
+
+    if (shouldSplitThisFrame || shouldMapResetThisFrame || shouldLandingReloadResetThisFrame)
+    {
+        vars.HoldLoadRemovalFrame = true;
+        vars.ReleaseLoadRemovalNextUpdate = true;
+    }
+
+    vars.LoadRemovalActive =
+        current.hasTransitionLoad ||
+        (vars.HoldLoadRemovalFrame as bool? ?? false);
 }
 
 start
@@ -419,41 +501,15 @@ reset
     if (timer.CurrentPhase != TimerPhase.Running)
         return false;
 
-    if (vars.ModResetPending)
-    {
-        vars.ModResetPending = false;
-        string modResetTargetLocation = vars.ModResetTargetLocation as string ?? "";
-
-        if (modResetTargetLocation == "landing" && settings["reset_on_new_start"])
-        {
-            vars.AutoStartAfterReset = true;
-            vars.AutoStartLocation = modResetTargetLocation;
-            vars.TransitionFromScene = currentScene;
-            vars.TransitionStartedFromMap = false;
-            vars.ModResetTargetLocation = "";
-            return true;
-        }
-
-        string modResetIlSettingKey = vars.GetILSettingKey(modResetTargetLocation);
-        if (!string.IsNullOrEmpty(modResetIlSettingKey) && settings[modResetIlSettingKey])
-        {
-            vars.AutoStartAfterReset = true;
-            vars.AutoStartLocation = modResetTargetLocation;
-            vars.TransitionFromScene = currentScene;
-            vars.TransitionStartedFromMap = false;
-            vars.ModResetTargetLocation = "";
-            return true;
-        }
-
-        vars.ModResetTargetLocation = "";
-    }
-
     string currentRunLocation = vars.TryGet(current, "runLocation") as string ?? "";
 
     if (transitionFinished && vars.TransitionStartedFromMap)
     {
         if (currentRunLocation == "landing" && settings["reset_on_new_start"])
         {
+            vars.SignalResetPending = false;
+            vars.SignalResetTargetLocation = "";
+            vars.SignalResetFlowActive = false;
             vars.AutoStartAfterReset = true;
             vars.AutoStartLocation = currentRunLocation;
             vars.TransitionFromScene = currentScene;
@@ -464,6 +520,9 @@ reset
         string ilSettingKey = vars.GetILSettingKey(currentRunLocation);
         if (!string.IsNullOrEmpty(ilSettingKey) && settings[ilSettingKey])
         {
+            vars.SignalResetPending = false;
+            vars.SignalResetTargetLocation = "";
+            vars.SignalResetFlowActive = false;
             vars.AutoStartAfterReset = true;
             vars.AutoStartLocation = currentRunLocation;
             vars.TransitionFromScene = currentScene;
@@ -488,8 +547,11 @@ reset
 onReset
 {
     vars.LoadRemovalActive = false;
-    vars.ModResetPending = false;
-    vars.ModResetTargetLocation = "";
+    vars.HoldLoadRemovalFrame = false;
+    vars.ReleaseLoadRemovalNextUpdate = false;
+    vars.SignalResetPending = false;
+    vars.SignalResetFlowActive = false;
+    vars.SignalResetTargetLocation = "";
     vars.TransitionFromScene = "";
     vars.TransitionStartedFromMap = false;
     vars.LastMapTriggerTime = DateTime.MinValue;
